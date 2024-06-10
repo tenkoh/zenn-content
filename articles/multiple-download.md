@@ -3,7 +3,7 @@ title: "[Tips]フロントエンドで複数ファイルを一括ダウンロー
 emoji: "💾"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["javascript", "frontend"]
-published: false
+published: true
 ---
 
 ## この記事は何
