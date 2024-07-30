@@ -288,3 +288,4 @@ sequenceDiagram
 ⭐️ぜひ読みたい記事たち⭐️
 - https://future-architect.github.io/articles/20240718a/
 - https://github.com/golang/go/issues/61898
+
