@@ -116,7 +116,7 @@ finish!
 「まだ分かりづらいだろうから、図を使って呼び出しの順序について確認してみるね。」
 
 :::message
-まず処理の順序を直感的に理解したいための説明になります。正確な言語仕様にそぐわない点があるかもしれません。気になる方はそっとタブを閉じてください。
+ここからは、まず処理の順序を直感的に理解するための説明になります。正確な言語仕様との齟齬がある場合、当然言語仕様が正ですので、詳細な挙動に関心のある方は言語仕様をご確認ください。このような位置付けの記述を好まれない方はそっとタブを閉じてください。
 :::
 
 「まず、処理全体の流れは次のようになっているよ。」
@@ -128,12 +128,12 @@ sequenceDiagram
     
     Note over FR,FY: 処理開始
     
-    loop 全ての要素に対して
+    loop func(yield)がreturnするまで
         FY->>FY: 次のyieldまで処理
         FY->>FR: yieldの引数を返す
         FY->>FY: ループが一巡するのを待つ
         FR->>FR: 受け取った値で処理
-        FR->>FY: 処理完了を通知
+        FR->>FY: 処理完了
         FY->>FY: yield=true
     end
 
@@ -255,19 +255,19 @@ sequenceDiagram
     
     Note over FR,FY: 処理開始
     
-    loop 全ての要素に対して
+    loop func(yield)がreturnするまで
         FY->>FY: 次のyieldまで処理
         FY->>FR: yieldの引数を返す
         FY->>FY: ループが一巡するのを待つ
         FR->>FR: 受け取った値で処理
         
         alt 処理続行
-            FR->>FY: 処理完了を通知
+            FR->>FY: 処理完了
             FY->>FY: yield=true
         else 処理中断
-            FR->>FY: 処理中断を通知
+            FR->>FY: 処理中断
             FY->>FY: yield=false
-            Note over FR,FY: ループを抜ける
+            FY->>FY: 処理を継続しないように処置
         end
     end
     
