@@ -218,7 +218,7 @@ awslocal s3 cp /docker-entrypoint-initaws.d/users.json s3://test-bucket/users.js
 ローカル開発環境の立ち上げは、Docker Composeの設定類が諸々あり、少し長くなってしまいましたね。ご安心ください、テスト編は`testcontainers-go`を使ってサクッと進めていきます。ありがとう、神...。
 
 `testcontainers-go`は、Go言語のテスト時にコンテナの立ち上げ・立ち下げを行ってくれるモジュールですね。様々なところで使われているのを見かけます。任意のDockerイメージを指定してテストで利用できるため非常に便利です。
-頻繁に使われるDockerイメージはtestcontainers-go`で利用しやすいようにモジュールが用意されています。LocalStack用のモジュールもあるため、積極的に使っておきたいと思います。
+頻繁に使われるDockerイメージは`testcontainers-go`で利用しやすいようにモジュールが用意されています。LocalStack用のモジュールもあるため、積極的に使っておきたいと思います。
 
 さて、現在のコードではテストを実施し辛いためいったんリファクタリングしておきましょう。`*s3.Client`というAWS SDKのクライアントをDIするようにし、テストでは`testcontainers-go`で立ち上げたコンテナを向けたクライアントを使えるようにします。
 
