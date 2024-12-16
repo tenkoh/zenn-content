@@ -3,7 +3,7 @@ title: "【Go】LocalStack活用メモ：ローカル開発環境からテスト
 emoji: "💫"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: [go, localstack, test]
-published: false
+published: true
 ---
 
 ## この記事は何
