@@ -100,7 +100,7 @@ import (
 )
 
 func main() {
-    // 引数として処理対象のMarkdownファイルのパスを取得する。例: ./path/to/markdown.md
+	// 引数として処理対象のMarkdownファイルのパスを取得する。例: ./path/to/markdown.md
 	if len(os.Args) != 2 {
 		panic("markdown file path is required as an argument")
 	}
@@ -113,9 +113,9 @@ func main() {
 	md := goldmark.New(
 		goldmark.WithExtensions(img64.Img64),
 		goldmark.WithRendererOptions(
-            // Markdownファイル内の画像パスを弄るオプション。PathResolver: func(string) string型の関数を受け取る。
+			// Markdownファイル内の画像パスを弄るオプション。PathResolver: func(string) string型の関数を受け取る。
 			img64.WithPathResolver(
-                // 単一の親ディレクトリのパスをプレフィックスとして付与するビルトインのResolver
+				// 単一の親ディレクトリのパスをプレフィックスとして付与するビルトインのResolver
 				img64.ParentLocalPathResolver(parentPath),
 			),
 		),
@@ -167,7 +167,7 @@ func remotePathResolver(root url.URL) img64.PathResolver {
 }
 
 func main() {
-    // 引数として処理対象のMarkdownファイルのパスを取得する。例: https://example.com/document.md
+	// 引数として処理対象のMarkdownファイルのパスを取得する。例: https://example.com/document.md
 	if len(os.Args) != 2 {
 		panic("remote markdown filepath must be specified")
 	}
@@ -177,11 +177,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-    // https://example.com/root/articles/document.md のようなURLから、rootの部分までを抜き出す。
-    // 何をルートとするかはケースバイケースなので、これは本当にただの例。
+    
+	// https://example.com/root/articles/document.md のようなURLから、rootの部分までを抜き出す。
+	// 何をルートとするかはケースバイケースなので、これは本当にただの例。
 	root.Path = path.Dir(path.Dir(root.Path))
 
-    // Markdownファイルを取得して読み込み
+	// Markdownファイルを取得して読み込み
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
@@ -190,13 +191,14 @@ func main() {
 
 	b, _ := io.ReadAll(resp.Body)
 
-    // HTMLファイルとして書き出す
+    
+	// HTMLファイルとして書き出す
 	md := goldmark.New(
 		goldmark.WithExtensions(img64.Img64),
 		goldmark.WithRendererOptions(
 			img64.WithPathResolver(remotePathResolver(*root)),
 			img64.WithFileReader(
-                // インターネットファイルを取得可能なビルトインのFileReaderを使う
+				// インターネットファイルを取得可能なビルトインのFileReaderを使う
 				img64.AllowRemoteFileReader(client),
 			),
 		),
