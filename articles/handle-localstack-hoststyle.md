@@ -22,10 +22,10 @@ AWSを使用するアプリケーションのローカル開発環境構築に�
 - LocalStackのS3には、1.LocalStackとは別のコンテナ(Appコンテナ)から、2.LocalStackが作成するLambdaから、また、3.署名付きURLを通じてホストPCのブラウザから、それぞれアクセスすることとする。(詳細はサンプルアプリケーションの章を参照)
 
 ## 結論
-- AWS SDKやCLIの操作をLocalStackに向けるにはエンドポイントの指定が必要。例えばLocalStackのDockerコンテナを使う場合であれば`http://localhost:4566`。しかしこの形式の指定では狙い通りに動作させられないケースがある。
+- AWS SDKやCLIの操作をLocalStackに向けるにはエンドポイントの指定が必要。例えばLocalStackのDockerコンテナをチュートリアル通りに使う場合であれば`http://localhost:4566`。しかしこの形式の指定では狙い通りに動作させられないケースがある。
 - LocalStackのS3のエンドポイントは`http://<host>/<bucket>/<object-key>`のようなパス形式も、`http://<bucket>.s3.<host>/<object-key>`のような仮想ホスト形式も、どちらもとりうる。
 - エンドポイントは、作成するS3の署名付きURLにも影響する。パス形式を使う場合は署名付きURLもパス形式になり、仮想ホスト形式でエンドポイントを指定する場合には仮想ホスト形式の署名付きURLになる[^1]。したがって、従来から仮想ホスト形式の署名付きURLを使用しており、その形式を変えたくない場合にはエンドポイントを`http://<bucket>.s3.<host>/<object-key>`の形式にする必要がある。**その場合、名前解決が必要になるが、ユースケースごとに使用すべき名前解決方法が異なる**。
-  - まず、**指定するエンドポイントのホストは`s3.localhost.localstack.cloud`にしなければならない**。(詳細は本文参照)
+  - まず、**指定するエンドポイントのホストは`s3.localhost.localstack.cloud`にすることを推奨**。(詳細は本文参照) ただしLocalStackコンテナが作成するリソース(例えばLambdaコンテナ)はエンドポイントの指定すら不要なので、以下の内容は当てはまらない。
   - 使用すべき名前解決の方法は以下の通り。
     - ホストPC: LocalStack社が登録済みのDNSレコードを用いる。つまり**特に必要な処置はない**。`s3.localhost.localstack.cloud`が`127.0.0.1`に解決されるため、ホストPCのlocalhostに向く。
     - LocalStack以外のAppコンテナ: **LocalStackコンテナのIPアドレスを固定した上で、LocalStackコンテナをDNSサーバーとして用いる**。`s3.localhost.localstack.cloud`が`<LocalStackコンテナのIPアドレス>`に解決される。
