@@ -38,7 +38,7 @@ AWSを使用するアプリケーションのローカル開発環境構築に�
 前置きが長くなりましたが、次からはいよいよ本題に入っていきます。以下の順番で説明を進めていきます。
 
 1. 前提知識
-    1. S3のパス形式
+    1. S3のURL形式
     1. AWS SDKのエンドポイントオプション
 1. サンプルアプリケーション
     1. AppコンテナのAWS SDKのエンドポイントおよびネットワーク設定
@@ -50,7 +50,7 @@ AWSを使用するアプリケーションのローカル開発環境構築に�
 ## 前提知識
 冒頭に示した構成において制約として記載した「仮想ホスト形式」のパスとは何なのか、図中に示した「AWS SDK Endpoint」とは何なのか。今後の説明に必要なこの２点を説明します。
 
-### S3のパス形式
+### S3のURL形式
 パブリックアクセス可能なS3バケット内のオブジェクトへのアクセスや、署名付きURLを使用したS3バケット内のオブジェクトへのアクセスにおいて、そのURLは**仮想ホスト形式**と**パス形式**の両方が有効です。
 
 https://docs.aws.amazon.com/ja_jp/AmazonS3/latest/userguide/VirtualHosting.html
@@ -61,9 +61,82 @@ https://docs.aws.amazon.com/ja_jp/AmazonS3/latest/userguide/VirtualHosting.html
 
 仮想ホスト形式は`https://your-bucket.s3.region-code.amazonaws.com/your-object-key`のようなバケット名をホスト名の一部として使用するものです。一方でパス形式は`https://s3.region-code.amazonaws.com/your-bucket/your-object-key`のようにバケット名をパスの一部として使用するものです。
 
-ここで`s3.region-code.amazonaws.com`の
+ここで`https://s3.region-code.amazonaws.com`の部分が次に説明するAWSサービスのエンドポイントに該当します。
 
 ### AWS SDKのエンドポイントオプション
+AWS SDKや`aws cli`はAWSサービスのエンドポイント設定をカスタマイズすることが可能です。エンドポイントにLocalStackを指定することで、他のアプリケーションコードは変更することなく、LocalStackを使って開発することができます。例えばLocalStackのドキュメントには以下のように記載されています。
+
+```go
+func main() {
+  awsEndpoint := "http://localhost:4566"
+  awsRegion := "us-east-1"
+  
+  awsCfg, err := config.LoadDefaultConfig(context.TODO(),
+    config.WithRegion(awsRegion),
+  )
+  if err != nil {
+    log.Fatalf("Cannot load the AWS configs: %s", err)
+  }
+
+  // Create the resource client
+  client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+    o.UsePathStyle = true
+    o.BaseEndpoint = aws.String(awsEndpoint)
+  })
+  // ...
+}
+```
+
+https://docs.localstack.cloud/user-guide/integrations/sdks/go/
+
+この例では、エンドポイントとして`http://localhost:4566`を使い、`UsePathStyle = true`にしてパス形式のURLを指定しています。
+
+ところで、LocalStackのドキュメントを複数見てみると、いくつか異なる記述が見受けられます。**このエンドポイントの設定が本記事のポイントの1つです**。それぞれを以下で確認してみましょう。
+
+#### パターン①: パス形式を使用
+先ほどの例のように、エンドポイントとして`http://localhost:4566`を使い、`UsePathStyle = true`にするものです。
+
+#### パターン②: 仮想ホスト形式を使用
+他方、以下のような設定も紹介されています。
+
+```ruby
+Aws.config.update(
+  endpoint:  'http://s3.localhost.localstack.cloud:4566', # update with localstack endpoint
+  # 他の項目は記載省略
+)
+```
+
+https://docs.localstack.cloud/user-guide/integrations/sdks/ruby/
+
+このパターンでは`UsePathStyle`[^1]を使ってURLをパス形式にする必要はありません。**突然現れた`s3.localhost.localstack.cloud`とは何者なのでしょうか？実はこれがS3の仮想ホスト形式URLに対応するためにLocalStackが用意した工夫です。**
+
+ためしにLocalStackのS3に`your-bucket`バケットを作成し、その中の公開オブジェクトにホストPCのブラウザからアクセスしてみましょう。仮想ホスト形式のURLは`http://your-bucket.s3.localhost.localstack.cloud:4566/your-object-key`のはずです。すると期待した通りにオブジェクトにアクセスできます。これは2つの仕組みの組み合わせで実現されています。
+
+1. `your-bucket.s3.localhost.localstack.cloud`は、LocalStackが登録したDNSレコードによって`127.0.0.1`、つまりホストPCのlocalhostに名前解決される。
+2. LocalStackには名前解決の機能があり、 受信したリクエストの宛先が`s3.`を接頭辞とするホスト名であればS3の仮想ホスト形式として解釈し、ホスト名に含まれるバケット名も含めて適切に解決する。[^2]
+
+簡単な図にすると以下のような流れです。
+
+1に関して、以下は`dig`による問い合わせ結果の抜粋です。`<bucket>.<service>.localhost.localstack.cloud`というホスト名はいずれも`127.0.0.1`として名前解決されます。
+```bash
+your-bucket.s3.localhost.localstack.cloud. 60 IN CNAME localhost.localstack.cloud.
+localhost.localstack.cloud. 600	IN	A	127.0.0.1
+```
+
+:::message
+上記のようなDNSレコードが用意されているとは言え、万全を期すなら各自のホストPCで`/etc/hosts` or `C:\Windows\System32\drivers\etc\hosts`に同様の設定を書くのが良いとも思います。バケット名を変えたら設定を変えないといけなくなりはしますが。
+:::
+
+[^1]: オプションの名前は各言語ごとに異なります
+
+[^2]: 名前解決機能の詳細はドキュメントが見当たりませんでしたが、[このような](https://docs.localstack.cloud/user-guide/aws/s3/#path-style-and-virtual-hosted-style-requests)記述があります。
+
+ただし、**本記事冒頭の図にあるような「LocalStackコンテナに他のコンテナからアクセスする」ケースではこの設定は有効に働きません。なぜなら他のコンテナ内の`127.0.0.1`にアクセスすることとなるためです。**これを解決するにはさらに設定が必要ですが、その説明はサンプルアプリケーションの章で行いたいと思います。
+
+#### エンドポイントのパス形式の影響
+基本的にはどちらのパス形式を使っても問題ありません。**ただしエンドポイントはS3等のリソースのパスの一部となるため、アプリケーションが特定のパス形式を想定したロジックを持ってしまっているような場合には、そのパス形式に設定する必要があります。**もし既存のプロジェクトでAWS SDKを使っていて、途中からLocalStackを使う場合には、これまでは**SDKのデフォルトのパス形式である仮想ホスト形式**を用いているケースが多いでしょう。（筆者もそのパターンでした）
+
+次章のサンプルアプリケーションでは仮想ホスト形式のLocalStackのエンドポイントを使用します。ただ、いざ仮想ホスト形式のパスを使おうとするといろいろな疑問や躓きポイントが出てきます。サンプルアプリケーションを通じて一つ一つ解消していきましょう。
 
 ## サンプルアプリケーション
 ### AppコンテナのAWS SDKのエンドポイントおよびネットワーク設定
