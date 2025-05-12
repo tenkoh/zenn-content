@@ -1,5 +1,5 @@
 ---
-title: "LocalStackのS3を意地でも仮想ホスト形式で扱うための全て"
+title: "LocalStackを本気で使いこなす：S3 URLを外部公開するための設定と仕組み理解"
 emoji: "✨"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["go", "localstack", "aws", "s3", "docker"]
@@ -8,21 +8,16 @@ published: false
 
 ## はじめに
 ### この記事は何
-AWSを使用するアプリケーションのローカル開発環境構築において、本物のAWSを使用しないで済む[LocalStack](https://www.localstack.cloud)はありがたい存在です。環境を壊しても問題ないという安心感は心強いものです。
+[LocalStack](https://www.localstack.cloud/)は、AWSの各種サービスをローカルで模倣できる便利なツールです。特にS3などの基本的なサービスは、AWS SDKのエンドポイントを切り替えるだけで簡単に扱えます。しかし、LocalStackをDockerコンテナ上で動かし、さらにアプリケーションも別のコンテナで動かす場合、**「ホストPCからアクセス可能なS3 URLを出力する」ことは、思いのほか難易度が高くなります。**
 
-筆者は最近、本物のAWSに依存したローカル開発環境を再構築する機会に恵まれたのですが、**S3のパス形式、SDK仕様、LocalStack仕様の三者が織りなす沼にハマって数日を溶かしました**。なんとか解決することができましたが、なかなか必要な情報に辿り着けず苦労しました。本記事は同じ沼にはまる人を減らしたい…！という思いで記しています。
-
-本記事では、最終的に下図の構成にたどり着きます。下図構成は**WebアプリケーションがS3上のオブジェクトの署名付きURLを発行し、ブラウザがそのURLを使ってファイルをダウンロードする**仕組みを実現しています。この中では１点制約を設けており、**署名付きURLはS3の virtual-hosted style (以下、仮想ホスト形式)であること**とします。つまりバケット名をホスト名として含む`http://test-bucket.s3.localhost.localstack.cloud:4566/<object-key><署名情報>`のような署名付きURLを使うということです。S3のパス形式については本文で詳しく説明していきます。
-
-図中には既にキーポイントを明示していますが、本記事ではそれぞれのポイントをステップバイステップで説明していきます。**LocalStackの使いこなしという点に限らず、AWS(S3)の仕様や、ネットワークの面白い点についても触れていきます。** 図を見て不明な点がある方はぜひご一読頂ければと思います。
+本記事では、LocalStackとアプリケーションコンテナを連携させる際の具体的な課題や設定（エンドポイントの指定、DNS解決の工夫）について、サンプルアプリケーションを通じて丁寧に解説します。最終的なサンプルアプリケーション構成は下図の通りです。下図構成は**WebアプリケーションがS3上のオブジェクトの署名付きURLを発行し、ブラウザがそのURLを使ってファイルをダウンロードする**仕組みを実現しています。この中では１点制約を設けており、**署名付きURLはS3の virtual-hosted style (以下、仮想ホスト形式)であること**とします。つまりバケット名をホスト名として含む`http://test-bucket.s3.localhost.localstack.cloud:4566/<object-key><署名情報>`のような署名付きURLを使うということです。S3のパス形式については本文で詳しく説明していきます。
 
 ![architecture.png](/images/localstack-hoststyle/architecture.drawio.png)
 
-また記事の最後にはおまけとして、他の要素(LocalStackのLambda)を追加する実験も行いますので、そちらもよろしければどうぞ。
+図中には既にキーポイントを明示していますが、本記事ではそれぞれのポイントをステップバイステップで説明していきます。**LocalStackの使いこなしという点に限らず、AWS(S3)の仕様や、ネットワークの面白い点についても触れていきます。** 図を見て不明な点がある方はぜひご一読頂ければと思います。
 
 ### 本記事の対象読者
-- LocalStackが好きな人
-- LocalStackを使い始めたい人
+- LocalStackが好きな人、使い始めたい人
 - ローカル開発環境構築の手札を増やしたい人
 
 ### 本記事で扱わないこと
@@ -35,11 +30,11 @@ AWSを使用するアプリケーションのローカル開発環境構築に�
   - S3サービスを実行する。(詳細はサンプルアプリケーションの章を参照)
 
 ### 結び
-前置きが長くなりましたが、次からはいよいよ本題に入っていきます。以下の順番で説明を進めていきます。
+次からはいよいよ本題に入っていきます。以下の順番で説明を進めていきます。
 
-1. 前提知識
+1. LocalStackを使うためのAWS SDK設定
+    1. AWS SDK設定の概要
     1. S3のURL形式
-    1. AWS SDKのエンドポイントオプション
 1. サンプルアプリケーション
     1. AppコンテナのAWS SDKのエンドポイントおよびネットワーク設定
     1. ホストからの名前解決の仕組み
@@ -47,23 +42,10 @@ AWSを使用するアプリケーションのローカル開発環境構築に�
 
 それでは始めましょう！
 
-## 前提知識
-冒頭に示した構成において制約として記載した「仮想ホスト形式」のパスとは何なのか、図中に示した「AWS SDK Endpoint」とは何なのか。今後の説明に必要なこの２点を説明します。
+## LocalStackを使うためのAWS SDK設定
+サンプルアプリケーションの説明の要点を理解するために、事前にLocalStackを使う際に必要なAWS SDKの設定をおさらいしましょう。本記事の肝の1つでもあるS3の2つのURL形式についても触れていきます。
 
-### S3のURL形式
-パブリックアクセス可能なS3バケット内のオブジェクトへのアクセスや、署名付きURLを使用したS3バケット内のオブジェクトへのアクセスにおいて、そのURLは**仮想ホスト形式**と**パス形式**の両方が有効です。
-
-https://docs.aws.amazon.com/ja_jp/AmazonS3/latest/userguide/VirtualHosting.html
-
-:::message
-ただし上記ドキュメントに記載されているように**パス形式**は将来的に廃止予定です。
-:::
-
-仮想ホスト形式は`https://your-bucket.s3.region-code.amazonaws.com/your-object-key`のようなバケット名をホスト名の一部として使用するものです。一方でパス形式は`https://s3.region-code.amazonaws.com/your-bucket/your-object-key`のようにバケット名をパスの一部として使用するものです。
-
-ここで`https://s3.region-code.amazonaws.com`の部分が次に説明するAWSサービスのエンドポイントに該当します。
-
-### AWS SDKのエンドポイントオプション
+### AWS SDK設定の概要
 AWS SDKや`aws cli`はAWSサービスのエンドポイント設定をカスタマイズすることが可能です。エンドポイントにLocalStackを指定することで、他のアプリケーションコードは変更することなく、LocalStackを使って開発することができます。例えばLocalStackのドキュメントには以下のように記載されています。
 
 ```go
@@ -71,14 +53,8 @@ func main() {
   awsEndpoint := "http://localhost:4566"
   awsRegion := "us-east-1"
   
-  awsCfg, err := config.LoadDefaultConfig(context.TODO(),
-    config.WithRegion(awsRegion),
-  )
-  if err != nil {
-    log.Fatalf("Cannot load the AWS configs: %s", err)
-  }
+  awsCfg, _ := config.LoadDefaultConfig(context.TODO()) // 紙面都合上エラーハンドリング省略
 
-  // Create the resource client
   client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
     o.UsePathStyle = true
     o.BaseEndpoint = aws.String(awsEndpoint)
@@ -89,15 +65,34 @@ func main() {
 
 https://docs.localstack.cloud/user-guide/integrations/sdks/go/
 
-この例では、エンドポイントとして`http://localhost:4566`を使い、`UsePathStyle = true`にしてパス形式のURLを指定しています。
+この例では、エンドポイントとして`http://localhost:4566`を使っています。LocalStackコンテナのサービスポート(4566)は一般的にホストPCの4566番ポートにバインドして使用するため、この設定によりホストPCはLocalStackのサービスにアクセスするようになります。
 
-ところで、LocalStackのドキュメントを複数見てみると、いくつか異なる記述が見受けられます。**このエンドポイントの設定が本記事のポイントの1つです**。それぞれを以下で確認してみましょう。
+ところで、先ほどの例にある`UsePathStyle`とは何でしょうか？これはS3のURLが**仮想ホスト形式(virtual-hosted style)**と**パス形式**のどちらの形式も扱うことから、SDKとしてどちらを使用するかを選択できるようにしているオプションです。仮想ホスト形式という言葉は、本記事冒頭で述べたサンプルアプリケーションの制約の中にも登場しましたね。2つのURL形式の違いを理解することは意外と重要です。
 
-#### パターン①: パス形式を使用
-先ほどの例のように、エンドポイントとして`http://localhost:4566`を使い、`UsePathStyle = true`にするものです。
+### S3のURL形式
+仮想ホスト形式とパス形式は、それぞれ以下のようなURLです。**なお、パス形式については廃止予定となっています。**
 
-#### パターン②: 仮想ホスト形式を使用
-他方、以下のような設定も紹介されています。
+| 形式 | URL |
+| --- | --- |
+| 仮想ホスト | `https://<bucket>.s3.<region>.amazonaws.com/<key>` |
+| パス | `https://s3.<region>.amazonaws.com/<bucket>/<key>` |
+
+https://docs.aws.amazon.com/AmazonS3/latest/userguide/VirtualHosting.html
+
+`<region>`などが入り込んでいますが、もう少し汎用的にすると以下の形式とも読み取れます。(後ほど説明するLocalStackでのエンドポイント設定深掘りのため汎用的にしておきます。)
+
+| 形式 | URL |
+| --- | --- |
+| 仮想ホスト | `<endpoint-schema>//<bucket>.<endpoint-host>/<key>` |
+| パス | `<endpoint-schema>//<endpoint-host>/<bucket>/<key>` |
+
+AWS SDKはデフォルトでは仮想ホスト形式を扱うようです。どちらのURL形式を使ってもSDKに隠蔽されている限りは大きな違いはありませんが、**S3の署名付きURLをSDKを使って発行するケースにおいては、設定した形式でURLが出力されます。**
+
+つまり先ほどの例では、エンドポイントを`http://localhost:4566`、URL形式を`パス形式`としているため、`http://localhost:4566/<bucket>/<key>`のようなURLが得られることになりますね。
+
+LocalStackのドキュメントには各プログラミング言語ごとのSDKの設定方法が記載されていますが、多くのケースで`パス形式`を扱う例が記載されています。これは推測ですが`パス形式`を扱う方が名前解決上はるかにシンプルでトラブルが少ないためと考えられます。仮想ホスト形式では`http://<bucket>.localhost:4566/<key>`のようなURLになってしまうため、何らかの設定をしていない限り名前解決ができません。パス形式を使えば、この「何らかの設定」を気にかけなくて良いメリットがあるでしょう。
+
+ところで、LocalStackのドキュメントを読んでいくと、先ほどとは異なるエンドポイントの設定例も見つけられます。
 
 ```ruby
 Aws.config.update(
@@ -108,7 +103,13 @@ Aws.config.update(
 
 https://docs.localstack.cloud/user-guide/integrations/sdks/ruby/
 
-このパターンでは`UsePathStyle`[^1]を使ってURLをパス形式にする必要はありません。**突然現れた`s3.localhost.localstack.cloud`とは何者なのでしょうか？実はこれがS3の仮想ホスト形式URLに対応するためにLocalStackが用意した工夫です。**
+このパターンでは`UsePathStyle`[^1]を使ってURLをパス形式にする必要はありません。**突然現れた`s3.localhost.localstack.cloud`とは何者なのでしょうか？実はこれがS3の仮想ホスト形式URLに対応するためにLocalStackが用意した工夫です。**この点は次章のサンプルアプリケーションの説明を通じて紐解いていきましょう。
+
+[^1]: オプションの名前は各言語ごとに異なります
+
+
+## サンプルアプリケーション
+
 
 ためしにLocalStackのS3に`your-bucket`バケットを作成し、その中の公開オブジェクトにホストPCのブラウザからアクセスしてみましょう。仮想ホスト形式のURLは`http://your-bucket.s3.localhost.localstack.cloud:4566/your-object-key`のはずです。すると期待した通りにオブジェクトにアクセスできます。これは2つの仕組みの組み合わせで実現されています。
 
@@ -127,16 +128,28 @@ localhost.localstack.cloud. 600	IN	A	127.0.0.1
 上記のようなDNSレコードが用意されているとは言え、万全を期すなら各自のホストPCで`/etc/hosts` or `C:\Windows\System32\drivers\etc\hosts`に同様の設定を書くのが良いとも思います。バケット名を変えたら設定を変えないといけなくなりはしますが。
 :::
 
-[^1]: オプションの名前は各言語ごとに異なります
 
 [^2]: 名前解決機能の詳細はドキュメントが見当たりませんでしたが、[このような](https://docs.localstack.cloud/user-guide/aws/s3/#path-style-and-virtual-hosted-style-requests)記述があります。
 
 ただし、**本記事冒頭の図にあるような「LocalStackコンテナに他のコンテナからアクセスする」ケースではこの設定は有効に働きません。なぜなら他のコンテナ内の`127.0.0.1`にアクセスすることとなるためです。**これを解決するにはさらに設定が必要ですが、その説明はサンプルアプリケーションの章で行いたいと思います。
 
-#### エンドポイントのパス形式の影響
-基本的にはどちらのパス形式を使っても問題ありません。**ただしエンドポイントはS3等のリソースのパスの一部となるため、アプリケーションが特定のパス形式を想定したロジックを持ってしまっているような場合には、そのパス形式に設定する必要があります。**もし既存のプロジェクトでAWS SDKを使っていて、途中からLocalStackを使う場合には、これまでは**SDKのデフォルトのパス形式である仮想ホスト形式**を用いているケースが多いでしょう。（筆者もそのパターンでした）
+#### エンドポイントのURL形式の影響
+基本的にはどちらのURL形式を使っても問題ありません。**ただしエンドポイントはS3等のリソースのURLの一部となるため、アプリケーションが特定のURL形式を想定したロジックを持ってしまっているような場合には、そのURL形式に設定する必要があります。**もし既存のプロジェクトでAWS SDKを使っていて、途中からLocalStackを使う場合には、これまでは**SDKのデフォルトのURL形式である仮想ホスト形式**を用いているケースが多いでしょう。（筆者もそのパターンでした）
 
 次章のサンプルアプリケーションでは仮想ホスト形式のLocalStackのエンドポイントを使用します。ただ、いざ仮想ホスト形式のパスを使おうとするといろいろな疑問や躓きポイントが出てきます。サンプルアプリケーションを通じて一つ一つ解消していきましょう。
+### S3のURL形式
+パブリックアクセス可能なS3バケット内のオブジェクトへのアクセスや、署名付きURLを使用したS3バケット内のオブジェクトへのアクセスにおいて、そのURLは**仮想ホスト形式**と**パス形式**の両方が有効です。
+
+https://docs.aws.amazon.com/ja_jp/AmazonS3/latest/userguide/VirtualHosting.html
+
+:::message
+ただし上記ドキュメントに記載されているように**パス形式**は将来的に廃止予定です。
+:::
+
+仮想ホスト形式は`https://your-bucket.s3.region-code.amazonaws.com/your-object-key`のようなバケット名をホスト名の一部として使用するものです。一方でパス形式は`https://s3.region-code.amazonaws.com/your-bucket/your-object-key`のようにバケット名をパスの一部として使用するものです。
+
+ここで`https://s3.region-code.amazonaws.com`の部分が次に説明するAWSサービスのエンドポイントに該当します。
+
 
 ## サンプルアプリケーション
 ### AppコンテナのAWS SDKのエンドポイントおよびネットワーク設定
