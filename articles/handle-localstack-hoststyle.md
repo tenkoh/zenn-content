@@ -38,7 +38,6 @@ published: false
 1. サンプルアプリケーション
     1. AppコンテナのAWS SDKのエンドポイントおよびネットワーク設定
     1. ホストからの名前解決の仕組み
-1. おまけ: LocalStackのLambdaを使う場合のAWS SDKのエンドポイント
 
 それでは始めましょう！
 
@@ -51,7 +50,6 @@ AWS SDKや`aws cli`はAWSサービスのエンドポイント設定をカスタ�
 ```go
 func main() {
   awsEndpoint := "http://localhost:4566"
-  awsRegion := "us-east-1"
   
   awsCfg, _ := config.LoadDefaultConfig(context.TODO()) // 紙面都合上エラーハンドリング省略
 
@@ -103,58 +101,138 @@ Aws.config.update(
 
 https://docs.localstack.cloud/user-guide/integrations/sdks/ruby/
 
-このパターンでは`UsePathStyle`[^1]を使ってURLをパス形式にする必要はありません。**突然現れた`s3.localhost.localstack.cloud`とは何者なのでしょうか？実はこれがS3の仮想ホスト形式URLに対応するためにLocalStackが用意した工夫です。**この点は次章のサンプルアプリケーションの説明を通じて紐解いていきましょう。
+このパターンでは`UsePathStyle`[^1]を使ってURLをパス形式にする必要はありません。**突然現れた`s3.localhost.localstack.cloud`とは何者なのでしょうか？実はこれがS3の仮想ホスト形式URLに対応するためにLocalStackが用意した工夫です。** この点は次章のサンプルアプリケーションの説明を通じて紐解いていきましょう。
 
 [^1]: オプションの名前は各言語ごとに異なります
 
 
 ## サンプルアプリケーション
+それでは、いよいよサンプルアプリケーションに取りかかりましょう。おさらいになりますが、期待する動作を次のように定めます。
+1. ユーザーはホストPCのブラウザで`http://localhost:8080`にアクセスする。
+1. ユーザーはページに表示された署名付きURLを用いてS3バケット内のオブジェクトをダウンロードする。
 
+本記事冒頭の完成図から、いくつかの設定を省略した図は以下の通りです。LocalStackコンテナ、Appコンテナを動作させ、`http://localhost:8080`にユーザーがアクセスするとAppコンテナの8080番ポートで待ち受けているWebアプリケーションが表示されます。
 
-ためしにLocalStackのS3に`your-bucket`バケットを作成し、その中の公開オブジェクトにホストPCのブラウザからアクセスしてみましょう。仮想ホスト形式のURLは`http://your-bucket.s3.localhost.localstack.cloud:4566/your-object-key`のはずです。すると期待した通りにオブジェクトにアクセスできます。これは2つの仕組みの組み合わせで実現されています。
+![architecture-plain.png](/images/localstack-hoststyle/architecture.plain.drawio.png)
 
-1. `your-bucket.s3.localhost.localstack.cloud`は、LocalStackが登録したDNSレコードによって`127.0.0.1`、つまりホストPCのlocalhostに名前解決される。
-2. LocalStackには名前解決の機能があり、 受信したリクエストの宛先が`s3.`を接頭辞とするホスト名であればS3の仮想ホスト形式として解釈し、ホスト名に含まれるバケット名も含めて適切に解決する。[^2]
+現在の図中には、AppコンテナがLocalStackコンテナのS3 オブジェクトの署名付きURLを発行するための設定が欠けています。LocalStackのドキュメント等を見ながらいろいろと設定を変えてみて、どうすれば期待する動作を実現できるか考えてみましょう。
 
-簡単な図にすると以下のような流れです。
+S3のURL形式については、まず**パス形式**で説明を進めます。一通りの説明の後、**仮想ホスト形式**を扱う場合を説明します。
 
-1に関して、以下は`dig`による問い合わせ結果の抜粋です。`<bucket>.<service>.localhost.localstack.cloud`というホスト名はいずれも`127.0.0.1`として名前解決されます。
-```bash
-your-bucket.s3.localhost.localstack.cloud. 60 IN CNAME localhost.localstack.cloud.
-localhost.localstack.cloud. 600	IN	A	127.0.0.1
+:::message
+これから先、「いやそりゃ明らかにダメでしょう」という設定も省略せずに、順序立てて説明していきます。冗長に感じられる方は適宜飛ばし読みしてください。
+:::
+
+### URL形式がパス形式の場合
+#### Step1. 最初に見つけられるドキュメントを真似る
+WebアプリケーションのAWS SDKに、先ほど説明した設定を加えてみましょう。これで動くでしょうか？
+
+```go
+func main() {
+  awsEndpoint := "http://localhost:4566"
+  
+  awsCfg, _ := config.LoadDefaultConfig(context.TODO()) // 紙面都合上エラーハンドリング省略
+
+  client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+    o.UsePathStyle = true
+    o.BaseEndpoint = aws.String(awsEndpoint)
+  })
+  // ...
+}
 ```
 
+**いいえ、動きません。署名付きURLを発行できません。** Appコンテナの`localhost:4566`では何のサービスも動いていませんので、ただただエラーとなります。この例はあくまでホストPC上で動作させるソフト向けの設定であると理解することが必要ですね。
+
+#### Step2. Dockerネットワークを加味してホスト名を変える
+次の実験です。同じDockerネットワークに繋がるコンテナは互いのサービス名をホスト名として通信することができます。そこでエンドポイントを`http://localstack:4566`にしてみます。これで動くでしょうか？
+
+![architecture-plain.png](/images/localstack-hoststyle/architecture.step2.drawio.png)
+
+**署名付きURLの発行には成功しますが、ホストPCのブラウザからオブジェクトにアクセスできません。[^2]** AWS SDKのエンドポイントに設定するURLは、AWS SDKが発行する署名付きURL等にそのまま使用されるため、Webアプリケーションは`http://localstack:4566/test-bucket/key-name`というURLをブラウザに表示します。ホストPCからすると`http://localstack`を名前解決できないため、LocalStackコンテナにアクセスできないですね。
+
+[^2]: ただしホストPCに`localstack 127.0.0.1`のようなホスト設定をしてあればアクセスできます。
+
+#### Step3. `s3.localhost.localstack.cloud`形式を使う
+LocalStackドキュメントの中で見かけた`http://s3.localhost.localstack.cloud:4566`というエンドポイント設定を試してみましょう。いよいよこれで動くでしょう！
+
+![architecture-plain.png](/images/localstack-hoststyle/architecture.step3.drawio.png)
+
+**いいえ、動きません。署名付きURLを発行できません。**
+
+おまじないのように使用した`s3.localhost.localstack.cloud`というホストが何なのかを確認してみると、この設定がうまく働かない理由がわかります。`s3.localhost.localstack.cloud`は`localhost.localstack.cloud`のCNAMEで、`localhost.localstack.cloud`は`127.0.0.1`に名前解決されます。(お手元で`dig`等でご確認頂けます。)
+
+これはホストPCのブラウザであれば`http://s3.localhost.localstack.cloud:4566/test-bucket/key-name`というURLが`http://127.0.0.1:4566/test-bucket/key-name`として名前解決され、LocalStackコンテナの4566番ポートに辿りつくためうまく働きます。一方でAppコンテナの中でもエンドポイントを`http://127.0.0.1:4566`としてしまうため、Step1.と同じ結果になります。
+
+![architecture-plain.png](/images/localstack-hoststyle/architecture.step3-2.drawio.png)
+
+Step1.と同じくホストPCを意識した仕組みであると理解することが必要ですね。
+
+#### Step4. AppコンテナのDNSサーバーを指定する
+LocalStackのドキュメントを彷徨うと、いよいよ求めていた答えに辿り着けます。
+
+https://docs.localstack.cloud/references/network-troubleshooting/endpoint-url/#from-your-container
+
+**LocalStackコンテナが持つDNS機能を使って`localhost.localstack.cloud`を名前解決してね！** ということです。
+
+```docker-compose
+services:
+  localstack:
+    image: localstack/localstack
+    # 省略
+    networks:
+      ls:
+        # Set the container IP address in the 10.0.2.0/24 subnet
+        ipv4_address: 10.0.2.20
+
+  application:
+    image: ghcr.io/localstack/localstack-docker-debug:main
+    # 省略
+    dns:
+      # Set the DNS server to be the LocalStack container
+      - 10.0.2.20
+    networks:
+      - ls
+
+networks:
+  ls:
+    ipam:
+      config:
+        # Specify the subnet range for IP address allocation
+        - subnet: 10.0.2.0/24
+```
+
+LocalStackコンテナをDNSサーバーとして使用するため、LocalStackコンテナのIPアドレスを固定し、AppコンテナのDNS設定にそのIPアドレスを指定します。これにより`localhost.localstack.cloud`というホストは、ホストPCからは`127.0.0.1`として、Appコンテナからは`10.0.2.20`として扱われ、それぞれ適切に動作するようになるという絡繰りです。おもしろいですね！
+
+![architecture-plain.png](/images/localstack-hoststyle/architecture.step4.drawio.png)
+
+**ついに動きました！**
+
+## URL形式が仮想ホスト形式の場合
+パス形式の場合とほとんど同じ議論です。Step.4の構成が必要です。
+
+もしかしたら「エンドポイントのホストにバケット名を含めるべきかどうか」で迷われるかもしれませんが、**バケット名はエンドポイントに含めません。バケット名はAWS SDKが適宜付与します。** Step.4の構成において、次のように処理が進められます。
+
+1. WebアプリケーションのAWS SDK設定で`http://s3.localhost.localstack.cloud:4566`をエンドポイントに、`UsePathStyle`を`false`に設定する。
+1. AWS SDKは`http://test-bucket.s3.localhost.localstack.cloud:4566`という仮想ホスト形式のURLを使用してサービス(LocalStack)へのリクエストを行う。
+1. LocalStackコンテナのDNS機能は、`test-bucket.s3.localhost.localstack.cloud`をLocalStackコンテナのIPアドレスに名前解決する。
+1. LocalStackコンテナは`s3.`というプレフィックスを含むリクエストをS3 仮想ホスト形式のURLとして解釈し適切に処置する。
+1. Webアプリケーションは`http://test-bucket.s3.localhost.localstack.cloud:4566/key-name`という仮想ホスト形式の署名付きURLを発行する。
+1. ブラウザがDNSサーバーに`test-bucket.s3.localhost.localstack.cloud`を問い合わせると`127.0.0.1`と名前解決される。
+1. ブラウザはLocalStackコンテナからオブジェクトを取得する。
+
+LocalStackコンテナのDNS機能が仮想ホスト形式のURLの名前解決をする点と、ホスト名に`s3.`を含めておくことでLocalStackコンテナが仮想ホスト形式のURLを適切に処置する点がポイントですね。
+
+これにて本記事の冒頭で宣言したサンプルアプリケーションが完成しました！
+
 :::message
-上記のようなDNSレコードが用意されているとは言え、万全を期すなら各自のホストPCで`/etc/hosts` or `C:\Windows\System32\drivers\etc\hosts`に同様の設定を書くのが良いとも思います。バケット名を変えたら設定を変えないといけなくなりはしますが。
+なお、ホストPCが利用しているDNSレコードはLocalStackが登録してくれているものですが、筆者としては、万全を機すのであればホストPCで`test-bucket.s3.localhost.localstack.cloud 127.0.0.1`というホスト設定をしておいた方が良いのかな？とも思っています。LocalStackがドメインを手放した時にどうなるか…？を考えると…。
 :::
-
-
-[^2]: 名前解決機能の詳細はドキュメントが見当たりませんでしたが、[このような](https://docs.localstack.cloud/user-guide/aws/s3/#path-style-and-virtual-hosted-style-requests)記述があります。
-
-ただし、**本記事冒頭の図にあるような「LocalStackコンテナに他のコンテナからアクセスする」ケースではこの設定は有効に働きません。なぜなら他のコンテナ内の`127.0.0.1`にアクセスすることとなるためです。**これを解決するにはさらに設定が必要ですが、その説明はサンプルアプリケーションの章で行いたいと思います。
-
-#### エンドポイントのURL形式の影響
-基本的にはどちらのURL形式を使っても問題ありません。**ただしエンドポイントはS3等のリソースのURLの一部となるため、アプリケーションが特定のURL形式を想定したロジックを持ってしまっているような場合には、そのURL形式に設定する必要があります。**もし既存のプロジェクトでAWS SDKを使っていて、途中からLocalStackを使う場合には、これまでは**SDKのデフォルトのURL形式である仮想ホスト形式**を用いているケースが多いでしょう。（筆者もそのパターンでした）
-
-次章のサンプルアプリケーションでは仮想ホスト形式のLocalStackのエンドポイントを使用します。ただ、いざ仮想ホスト形式のパスを使おうとするといろいろな疑問や躓きポイントが出てきます。サンプルアプリケーションを通じて一つ一つ解消していきましょう。
-### S3のURL形式
-パブリックアクセス可能なS3バケット内のオブジェクトへのアクセスや、署名付きURLを使用したS3バケット内のオブジェクトへのアクセスにおいて、そのURLは**仮想ホスト形式**と**パス形式**の両方が有効です。
-
-https://docs.aws.amazon.com/ja_jp/AmazonS3/latest/userguide/VirtualHosting.html
-
-:::message
-ただし上記ドキュメントに記載されているように**パス形式**は将来的に廃止予定です。
-:::
-
-仮想ホスト形式は`https://your-bucket.s3.region-code.amazonaws.com/your-object-key`のようなバケット名をホスト名の一部として使用するものです。一方でパス形式は`https://s3.region-code.amazonaws.com/your-bucket/your-object-key`のようにバケット名をパスの一部として使用するものです。
-
-ここで`https://s3.region-code.amazonaws.com`の部分が次に説明するAWSサービスのエンドポイントに該当します。
-
-
-## サンプルアプリケーション
-### AppコンテナのAWS SDKのエンドポイントおよびネットワーク設定
-### ホストからの名前解決の仕組み
-
-## おまけ: LocalStackのLambdaを使う場合のAWS SDKのエンドポイント
 
 ## おわりに
+本記事では、LocalStackを用いたS3の仮想ホスト形式URLの外部公開について、ネットワーク構成やDNS解決の仕組みを交えながら解説しました。特に、Dockerコンテナ環境下で「ホストPCからアクセス可能な署名付きURLを発行する」ためのポイントや、LocalStack独自のDNS機能を活用した実践的な設定方法に焦点を当てました。
+
+LocalStackはローカル開発を強力にサポートしてくれる一方、S3の仮想ホスト形式やネットワーク越しの名前解決など、実運用に近い構成を再現しようとすると意外な落とし穴もあります。本記事の内容が、そうした課題に直面した際のヒントや、より深い理解の一助となれば幸いです。
+
+今後もLocalStackやAWSの仕様は進化していくため、公式ドキュメントやリリースノートも適宜チェックしつつ、柔軟に開発環境をアップデートしていきましょう。
+
+最後までお読みいただき、ありがとうございました！
