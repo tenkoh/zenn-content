@@ -65,7 +65,7 @@ https://docs.localstack.cloud/user-guide/integrations/sdks/go/
 
 この例では、エンドポイントとして`http://localhost:4566`を使っています。LocalStackコンテナのサービスポート(4566)は一般的にホストPCの4566番ポートにバインドして使用するため、この設定によりホストPCはLocalStackのサービスにアクセスするようになります。
 
-ところで、先ほどの例にある`UsePathStyle`とは何でしょうか？これはS3のURLが**仮想ホスト形式(virtual-hosted style)**と**パス形式**のどちらの形式も扱うことから、SDKとしてどちらを使用するかを選択できるようにしているオプションです。仮想ホスト形式という言葉は、本記事冒頭で述べたサンプルアプリケーションの制約の中にも登場しましたね。2つのURL形式の違いを理解することは意外と重要です。
+ところで、先ほどの例にある`UsePathStyle`とは何でしょうか？これはS3のURLが**仮想ホスト形式**と**パス形式**のどちらの形式も扱うことから、SDKとしてどちらを使用するかを選択できるようにしているオプションです。仮想ホスト形式という言葉は、本記事冒頭で述べたサンプルアプリケーションの制約の中にも登場しましたね。2つのURL形式の違いを理解することは意外と重要です。
 
 ### S3のURL形式
 仮想ホスト形式とパス形式は、それぞれ以下のようなURLです。**なお、パス形式については廃止予定となっています。**
@@ -215,17 +215,17 @@ LocalStackコンテナをDNSサーバーとして使用するため、LocalStack
 1. WebアプリケーションのAWS SDK設定で`http://s3.localhost.localstack.cloud:4566`をエンドポイントに、`UsePathStyle`を`false`に設定する。
 1. AWS SDKは`http://test-bucket.s3.localhost.localstack.cloud:4566`という仮想ホスト形式のURLを使用してサービス(LocalStack)へのリクエストを行う。
 1. LocalStackコンテナのDNS機能は、`test-bucket.s3.localhost.localstack.cloud`をLocalStackコンテナのIPアドレスに名前解決する。
-1. LocalStackコンテナは`s3.`というプレフィックスを含むリクエストをS3 仮想ホスト形式のURLとして解釈し適切に処置する。
+1. LocalStackコンテナは`s3.`というプレフィックスを含むリクエストをS3の仮想ホスト形式のURLとして解釈し適切に処置する。
 1. Webアプリケーションは`http://test-bucket.s3.localhost.localstack.cloud:4566/key-name`という仮想ホスト形式の署名付きURLを発行する。
 1. ブラウザがDNSサーバーに`test-bucket.s3.localhost.localstack.cloud`を問い合わせると`127.0.0.1`と名前解決される。
 1. ブラウザはLocalStackコンテナからオブジェクトを取得する。
 
-LocalStackコンテナのDNS機能が仮想ホスト形式のURLの名前解決をする点と、ホスト名に`s3.`を含めておくことでLocalStackコンテナが仮想ホスト形式のURLを適切に処置する点がポイントですね。
+LocalStackコンテナのDNS機能が仮想ホスト形式URLの名前解決を担う点と、ホスト名に`s3.`を含めておくことでLocalStackコンテナが仮想ホスト形式URLを適切に処理する点がポイントです。
 
-これにて本記事の冒頭で宣言したサンプルアプリケーションが完成しました！
+これにて本記事冒頭で宣言したサンプルアプリケーションが完成しました！
 
 :::message
-なお、ホストPCが利用しているDNSレコードはLocalStackが登録してくれているものですが、筆者としては、万全を機すのであればホストPCで`test-bucket.s3.localhost.localstack.cloud 127.0.0.1`というホスト設定をしておいた方が良いのかな？とも思っています。LocalStackがドメインを手放した時にどうなるか…？を考えると…。
+なお、ホストPCが利用しているDNSレコードはLocalStackが登録してくれているものですが、筆者としては、万全を期すのであればホストPCで`test-bucket.s3.localhost.localstack.cloud 127.0.0.1`というホスト設定をしておいた方が良いのでは？とも考えています。LocalStackがこのドメインを手放した場合などを考慮すると…?という考えからです。
 :::
 
 ## おわりに
