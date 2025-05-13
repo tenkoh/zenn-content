@@ -178,7 +178,7 @@ https://docs.localstack.cloud/references/network-troubleshooting/endpoint-url/#f
 
 **LocalStackコンテナが持つDNS機能を使って`localhost.localstack.cloud`を名前解決してね！** ということです。
 
-```docker-compose
+```yaml
 services:
   localstack:
     image: localstack/localstack
