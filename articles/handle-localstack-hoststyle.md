@@ -1,6 +1,6 @@
 ---
-title: "LocalStackを本気で使いこなす：S3 URLを外部公開するための設定と仕組み理解"
-emoji: "✨"
+title: "LocalStackのS3を本気で使いこなす：DNS設定からURL形式まで"
+emoji: "🪣"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["go", "localstack", "aws", "s3", "docker"]
 published: false
@@ -10,7 +10,9 @@ published: false
 ### この記事は何
 [LocalStack](https://www.localstack.cloud/)は、AWSの各種サービスをローカルで模倣できる便利なツールです。特にS3などの基本的なサービスは、AWS SDKのエンドポイントを切り替えるだけで簡単に扱えます。しかし、LocalStackをDockerコンテナ上で動かし、さらにアプリケーションも別のコンテナで動かす場合、**「アプリケーションコンテナとホストPCの双方からS3にアクセスする」ことは、思いのほか難易度が高くなります。**
 
-本記事では、LocalStackとアプリケーションコンテナを連携させる際の具体的な課題や設定（エンドポイントの指定、DNSによる名前解決の工夫）について、サンプルアプリケーションを通じて丁寧に解説します。最終的なサンプルアプリケーション構成は下図の通りです。下図構成は**WebアプリケーションがS3にオブジェクトを保存した上で署名付きURLを発行し、ブラウザがそのURLを使ってファイルをダウンロードする**仕組みを実現しています。この中では１点制約を設けており、**署名付きURLはS3の virtual-hosted style (以下、仮想ホスト形式)であること**とします。つまりバケット名をホスト名として含む`http://test-bucket.s3.localhost.localstack.cloud:4566/<object-key><署名情報>`のような署名付きURLを使うということです。S3のパス形式については本文で詳しく説明していきます。
+本記事では、LocalStackとアプリケーションコンテナを連携させる際の具体的な課題や設定（エンドポイントの指定、DNSによる名前解決の工夫）について、サンプルアプリケーションを通じて丁寧に解説します。
+
+最終的なサンプルアプリケーション構成は下図の通りです。下図構成は**WebアプリケーションがS3にオブジェクトを保存した上で署名付きURLを発行し、ブラウザがそのURLを使ってファイルをダウンロードする**仕組みを実現しています。
 
 ![architecture.png](/images/localstack-hoststyle/architecture.drawio.png)
 
@@ -84,7 +86,7 @@ https://docs.aws.amazon.com/AmazonS3/latest/userguide/VirtualHosting.html
 | 仮想ホスト | `<endpoint-schema>//<bucket>.<endpoint-host>/<key>` |
 | パス | `<endpoint-schema>//<endpoint-host>/<bucket>/<key>` |
 
-AWS SDKはデフォルトでは仮想ホスト形式を扱うようです。どちらのURL形式を使ってもSDKに隠蔽されている限りは大きな違いはありませんが、**S3の署名付きURLをSDKを使って発行するケースにおいては、設定した形式でURLが出力されます。**
+AWS SDKはデフォルトでは仮想ホスト形式を扱います。どちらのURL形式を使ってもSDKに隠蔽されている限りは大きな違いはありませんが、**S3の署名付きURLをSDKを使って発行するような、S3のURLを外部公開するケースにおいては、設定した形式でURLが出力されます。**
 
 つまり先ほどの例では、エンドポイントを`http://localhost:4566`、URL形式を`パス形式`としているため、`http://localhost:4566/<bucket>/<key>`のようなURLが得られることになりますね。
 
@@ -101,7 +103,7 @@ Aws.config.update(
 
 https://docs.localstack.cloud/user-guide/integrations/sdks/ruby/
 
-このパターンでは`UsePathStyle`[^1]を使ってURLをパス形式にする必要はありません。**突然現れた`s3.localhost.localstack.cloud`とは何者なのでしょうか？実はこれがS3の仮想ホスト形式URLに対応するためにLocalStackが用意した工夫です。** この点は次章のサンプルアプリケーションの説明を通じて紐解いていきましょう。
+このパターンでは`UsePathStyle`[^1]を使ってURLをパス形式にする必要はありません。**突然現れた`s3.localhost.localstack.cloud`とは何者なのでしょうか？実はこれが名前解決や仮想ホスト形式への対応のためにLocalStackが用意している工夫です。** この点は次章のサンプルアプリケーションの説明を通じて紐解いていきましょう。
 
 [^1]: オプションの名前は各言語ごとに異なります
 
@@ -113,7 +115,7 @@ https://docs.localstack.cloud/user-guide/integrations/sdks/ruby/
 1. WebアプリケーションはS3のオブジェクトをダウンロードする署名付きURLを発行し、リンクとしてユーザーに表示する。
 1. ユーザーは署名付きURLを用いてS3バケット内のオブジェクトをダウンロードする。
 
-本記事冒頭の完成図から、いくつかの設定を省略した図は以下の通りです。LocalStackコンテナ、Appコンテナを動作させ、`http://localhost:8080`にユーザーがアクセスするとAppコンテナの8080番ポートで待ち受けているWebアプリケーションが表示されます。
+本記事冒頭の完成図からいくつかの設定を省略した図は以下の通りです。LocalStackコンテナ、Appコンテナを動作させ、`http://localhost:8080`にユーザーがアクセスするとAppコンテナの8080番ポートで待ち受けているWebアプリケーションが表示されます。
 
 ![architecture-plain.png](/images/localstack-hoststyle/architecture.plain.drawio.png)
 
@@ -212,7 +214,7 @@ LocalStackコンテナをDNSサーバーとして使用するため、LocalStack
 ## URL形式が仮想ホスト形式の場合
 パス形式の場合とほとんど同じ議論です。Step4.の構成が必要です。
 
-もしかしたら「エンドポイントのホストにバケット名を含めるべきかどうか」で迷われるかもしれませんが、**バケット名はエンドポイントに含めません。バケット名はAWS SDKが適宜付与します。** Step4.の構成において、次のように処理が進められます。
+もしかしたら「エンドポイントにバケット名を含めるべきかどうか」で迷われるかもしれませんが、**バケット名はエンドポイントの設定に含めません。バケット名はAWS SDKが自動で付与します。** Step4.の構成において、次のように処理が進められます。
 
 1. WebアプリケーションのAWS SDK設定で`http://s3.localhost.localstack.cloud:4566`をエンドポイントに、`UsePathStyle`を`false`に設定する。(デフォルトが`false`のため何も設定しなければOK)
 1. AWS SDKは`http://test-bucket.s3.localhost.localstack.cloud:4566`という仮想ホスト形式のURLを使用してサービス(LocalStack)へのリクエストを行う。
@@ -224,7 +226,7 @@ LocalStackコンテナをDNSサーバーとして使用するため、LocalStack
 
 LocalStackコンテナのDNS機能が仮想ホスト形式URLの名前解決を担う点と、ホスト名に`s3.`を含めておくことでLocalStackコンテナが仮想ホスト形式URLを適切に処理する点がポイントです。
 
-これにて本記事冒頭で宣言したサンプルアプリケーションが完成しました！
+**これにて本記事冒頭で宣言したサンプルアプリケーションが完成しました！**
 
 :::message
 なお、ホストPCが利用しているDNSレコードはLocalStackが登録してくれているものですが、筆者としては、万全を期すのであればホストPCで`test-bucket.s3.localhost.localstack.cloud 127.0.0.1`というホスト設定をしておいた方が良いのでは？とも考えています。LocalStackがこのドメインを手放した場合などを考慮すると…?という考えからです。
