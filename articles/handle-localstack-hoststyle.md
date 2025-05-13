@@ -3,7 +3,7 @@ title: "LocalStackのS3を本気で使いこなす：DNS設定からURL形式ま
 emoji: "🪣"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["go", "localstack", "aws", "s3", "docker"]
-published: false
+published: true
 ---
 
 ## はじめに
