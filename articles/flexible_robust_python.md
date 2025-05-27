@@ -15,6 +15,8 @@ published: false
 - ソフトウェア内部では`ダックタイピング`で振る舞いを変える。
 - 上記を実現するために`Pydantic`と組み込みの`Protocol`を使用する。
 
+この着地点に向かって、段階的にコードを改善していく過程を説明します。
+
 ### 本記事の対象読者
 - Pythonを使って柔軟かつ複雑さを抑えた実装をしてみたい人。
 - (軽くしか触れませんが)型の活用が好きな人。
@@ -94,7 +96,7 @@ def handler(event: dict) -> dict:
 
 条件分岐を繰り返してリクエストを捌いていくため、本質的ではない処理が嵩んでしまいますね。また想定しないリクエストに対する処理も必要で複雑度が高いです。
 
-このコードの複雑度を下げていきましょう。
+このコードの複雑度を下げていきましょう。次節からコードを段階的に改善していきます。
 
 ### Pydanticでリクエストを検証する
 普段Pythonを触らない筆者でも名前を知っている**Pydantic**を使っていきます。Pydanticの概要については[公式ドキュメントのGetting Started](https://docs.pydantic.dev/latest/)を参照ください。
@@ -119,7 +121,7 @@ class ServeRequest(BaseModel):
 
     @model_validator(mode='after')
     def validate_coffee_fields(self) -> Self:
-        if self.drink_type is not "coffee":
+        if self.drink_type != "coffee":
             return self
         if self.mode is None:
             raise ValueError("mode is required")
@@ -236,7 +238,12 @@ run_animal(d) # 実行可能
 
 「ガァ」と鳴くものは全てアヒル、つまりダックタイピングが可能になるんですね。
 
-この仕組みを使って先ほどのコードを改善していきましょう。
+`abc`と`Protocol`の使い分けですが、公式ドキュメントを参照して以下のように解釈しました。
+
+- `abc`: クラス継承による明示的な抽象化が必要な場合
+- `Protocol`: 振る舞いの一致のみを重視する場合
+
+筆者自身がGo言語の`interface`になじみがあることもあり、似た性質の`Protocol`を採用してみます。`Protocol`の仕組みを活かして先ほどのコードを改善していきましょう。
 
 まず、少し後出しになってしまいますが、先ほどTagged Unionを使用した修正結果を一部変更します。`Coffee`のような「物」ではなく`CoffeeServer`のような「ふるまいの主体」であるとして、`cup_type`を受け取って飲み物を注ぐ`serve`というふるまいを持つことにします(簡単のため、戻り値はNoneにします)。併せて、`cup_type`のリテラルも個別に定義しておきます。
 
