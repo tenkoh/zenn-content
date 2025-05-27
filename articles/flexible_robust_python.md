@@ -50,7 +50,7 @@ HTTPのPOSTリクエストで送信されたJSONがミドルウェアで`event`�
 愚直にアプリケーションの仕様を`handler`の中に書いていくとこうなります。
 
 ```python
-def handler(event: dict):
+def handler(event: dict) -> dict:
     drink_type = event.get('drink_type')
     if drink_type is None:
         return {statusCode: 400, body: 'drink_type is required'}
@@ -128,7 +128,7 @@ class ServeRequest(BaseModel):
 この変更により、先ほどの`handler`のコードは次のように修正できます。
 
 ```python
-def handler(event: dict):
+def handler(event: dict) -> dict:
     # バリデーションはここで一撃で完了
     request = ServeRequest.model_validate(event)
 
@@ -188,7 +188,7 @@ https://pydantic.com.cn/ja/concepts/unions/#str
 `handler`のコードはあまり変わりません。
 
 ```python
-def handler(event: dict):
+def handler(event: dict) -> dict:
     request = ServeRequest.model_validate(event)
 
     match request.drink:
@@ -274,25 +274,25 @@ class ServeRequest(BaseModel):
 `handler`を変更してみます。
 
 ```python
+from abc import abstractmethod
 from typing import Protocol
 
 class DrinkServer(Protocol):
     @abstractmethod
-    def serve(cup_type: CupType) -> None:
+    def serve(self, cup_type: CupType) -> None:
         pass
 
-# 内容がうっすいですが、説明の都合上個別の関数を切り出しています
 def serve_drink(server: DrinkServer, cup_type: CupType) -> None:
     server.serve(cup_type)
 
-def handler(event: dict):
+def handler(event: dict) -> dict:
     request = ServeRequest.model_validate(event)
-
     serve_drink(request.drink_server, request.cup_type)
+    return {"statusCode": 200}
 ```
 
 **`handler`の中身が激減しました。**
-説明の都合上、中身のほとんどない`serve_drink`という関数を作成しています。`serve`というふるまいを持つ`DrinkServer`クラスを受け取って処理するこのような関数を用意しておくと、今後飲み物の種類が増えた時でも`serve`メソッドを持つあらゆるクラスを受け取ることができますね。
+説明の都合上、中身のほとんどない`serve_drink`という関数を作成しています。`Protocol`を使用することで、`serve`メソッドを持つ任意のクラスを`DrinkServer`型として扱うことができます。これにより、新しい飲み物の種類を追加する際も、`serve`メソッドを持つクラスを実装するだけで既存のコードを変更することなく対応できます。
 
 :::message
 `ServeRequest`クラスは`CoffeeServer | GreenTeaServer`のように使用可能な`DrinkServer`の実装クラスをUnionで指定しているため、飲み物の種類が増えたらクラスを追加していく必要があります。これは、このアプリケーションが提供可能なサービスを明示する必要があるため、抽象ではなく具象で記述するべき内容であるからです。
