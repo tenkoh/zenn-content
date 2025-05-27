@@ -55,7 +55,7 @@ HTTPのPOSTリクエストで送信されたJSONがミドルウェアで`event`�
 def handler(event: dict) -> dict:
     drink_type = event.get('drink_type')
     if drink_type is None:
-        return {statusCode: 400, body: 'drink_type is required'}
+        return {'statusCode': 400, 'body': 'drink_type is required'}
     
     cup_type = event.get('cup_type')
     # エラーハンドリング省略
@@ -64,7 +64,7 @@ def handler(event: dict) -> dict:
         case 'coffee':
             mode = event.get('mode')
             if mode is None:
-                return {statusCode: 400, body: 'coffee serving mode is required'}
+                return {'statusCode': 400, 'body': 'coffee serving mode is required'}
             match mode:
                 case 'auto':
                     # ドリンクをカップに注ぐ処理
@@ -120,7 +120,7 @@ class ServeRequest(BaseModel):
     region: Literal["famous_region", "other_region"] | None = None
 
     @model_validator(mode='after')
-    def validate_coffee_fields(self) -> Self:
+    def validate_coffee_fields(self) -> 'ServeRequest':
         if self.drink_type != "coffee":
             return self
         if self.mode is None:
@@ -158,7 +158,7 @@ def handler(event: dict) -> dict:
 ```python
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 class CoffeeAutoMode(BaseModel):
     mode: Literal["auto"] = "auto"
@@ -177,7 +177,7 @@ class GreenTea(BaseModel):
     region: Literal["famous_region", "other_region"]
 
 class ServeRequest(BaseModel):
-    drink: Coffee | GreenTea = Field(discriminator="drink_typ")
+    drink: Coffee | GreenTea = Field(discriminator="drink_type")
     cup_type: Literal["paper_cup", "my_cup"]
 ```
 
@@ -252,7 +252,7 @@ run_animal(d) # 実行可能
 ```python
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 CupType = Literal["paper_cup", "my_cup"]
