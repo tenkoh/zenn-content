@@ -114,10 +114,10 @@ from pydantic import BaseModel, model_validator
 class ServeRequest(BaseModel):
     drink_type: Literal["coffee", "green_tea"]
     cup_type: Literal["paper_cup", "my_cup"]
-    mode: Literal["auto", "custom"] | None
-    bean: Literal["famous_coffee", "other_coffee"] | None
-    density: Literal["high", "mid", "low"] | None
-    region: Literal["famous_region", "other_region"] | None
+    mode: Literal["auto", "custom"] | None = None
+    bean: Literal["famous_coffee", "other_coffee"] | None = None
+    density: Literal["high", "mid", "low"] | None = None
+    region: Literal["famous_region", "other_region"] | None = None
 
     @model_validator(mode='after')
     def validate_coffee_fields(self) -> Self:
@@ -132,6 +132,7 @@ class ServeRequest(BaseModel):
 ```python
 def handler(event: dict) -> dict:
     # バリデーションはここで一撃で完了
+    # エラーハンドリングは割愛しています
     request = ServeRequest.model_validate(event)
 
     match request.drink_type:
@@ -139,7 +140,7 @@ def handler(event: dict) -> dict:
             match request.mode:
                 case "auto":
                     # いろいろ
-                case "manual":
+                case "custom":
                     # いろいろ
         case "green_tea":
             # いろいろ
@@ -169,7 +170,7 @@ class CoffeeCustomMode(BaseModel):
 
 class Coffee(BaseModel):
     drink_type: Literal["coffee"] = "coffee"
-    serve_mode: CoffeeAuto | CoffeeCustom = Field(discriminator="mode")
+    serve_mode: CoffeeAutoMode | CoffeeCustomMode = Field(discriminator="mode")
 
 class GreenTea(BaseModel):
     drink_type: Literal["green_tea"] = "green_tea"
@@ -195,7 +196,7 @@ def handler(event: dict) -> dict:
 
     match request.drink:
         case Coffee():
-            match request.drink.mode:
+            match request.drink.serve_mode:
                 case CoffeeAutoMode():
                     # いろいろ
                 case CoffeeCustomMode():
@@ -256,9 +257,19 @@ from pydantic import BaseModel
 
 CupType = Literal["paper_cup", "my_cup"]
 
+# 変化なし
+class CoffeeAutoMode(BaseModel):
+    mode: Literal["auto"] = "auto"
+
+# 変化なし
+class CoffeeCustomMode(BaseModel):
+    mode: Literal["custom"] = "custom"
+    bean: Literal["famous_coffee", "other_coffee"]
+    density: Literal["high", "mid", "low"]
+
 class CoffeeServer(BaseModel):
     drink_type: Literal["coffee"] = "coffee"
-    serve_mode: CoffeeAuto | CoffeeCustom = Field(discriminator="mode")
+    serve_mode: CoffeeAutoMode | CoffeeCustomMode = Field(discriminator="mode")
 
     def serve(self, cup_type: CupType) -> None:
         # do something
@@ -272,7 +283,7 @@ class GreenTeaServer(BaseModel):
         # do something
 
 class ServeRequest(BaseModel):
-    drink_server: CoffeeServer | GreenTeaServer = Field(discriminator="drink_typ")
+    drink_server: CoffeeServer | GreenTeaServer = Field(discriminator="drink_type")
     cup_type: CupType
 ```
 
