@@ -53,27 +53,27 @@ HTTPのPOSTリクエストで送信されたJSONがミドルウェアで`event`�
 
 ```python
 def handler(event: dict) -> dict:
-    drink_type = event.get('drink_type')
+    drink_type = event.get("drink_type")
     if drink_type is None:
-        return {'statusCode': 400, 'body': 'drink_type is required'}
+        return {"statusCode": 400, "body": "drink_type is required"}
     
-    cup_type = event.get('cup_type')
+    cup_type = event.get("cup_type")
     # エラーハンドリング省略
     
     match drink_type:
-        case 'coffee':
-            mode = event.get('mode')
+        case "coffee":
+            mode = event.get("mode")
             if mode is None:
-                return {'statusCode': 400, 'body': 'coffee serving mode is required'}
+                return {"statusCode": 400, "body": "coffee serving mode is required"}
             match mode:
-                case 'auto':
+                case "auto":
                     # ドリンクをカップに注ぐ処理
-                case 'custom':
+                case "custom":
                     # コーヒー豆の銘柄を表すキーと、濃さを表すキーがあるかを確認し、処理を進めていきます。
                     # さすがに記載を省略します。
                 case _:
                     # 想定していない例外ケースです。
-        case 'green_tea':
+        case "green_tea":
             # 同じように処置していきます。
 ```
 
@@ -119,7 +119,7 @@ class ServeRequest(BaseModel):
     density: Literal["high", "mid", "low"] | None = None
     region: Literal["famous_region", "other_region"] | None = None
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_coffee_fields(self) -> 'ServeRequest':
         if self.drink_type != "coffee":
             return self
