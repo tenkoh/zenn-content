@@ -1,9 +1,9 @@
 ---
-title: "Python再訪:柔軟かつ複雑さを抑えた実装を考える"
+title: "Python再訪:柔軟かつ複雑さを抑えた実装の挑戦 - 直和・ダックタイピング"
 emoji: "🐍"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["python", "pydantic", "taggedunion", "型"]
-published: false
+published: true
 ---
 
 ## はじめに
