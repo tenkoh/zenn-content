@@ -3,7 +3,7 @@ title: "【Go】古いコードからの卒業を支えるMCP"
 emoji: "✨"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["go", "golang", "mcp", "llm", "ai"]
-published: false
+published: true
 ---
 
 ## はじめに
