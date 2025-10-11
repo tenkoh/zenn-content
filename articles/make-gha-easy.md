@@ -3,7 +3,7 @@ title: "GitHub Actions ワークフロー作成をもっと楽しく - アクシ
 emoji: "✅"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["github", "actions", "cli", "mcp", "go"]
-published: false
+published: true
 ---
 
 :::message
