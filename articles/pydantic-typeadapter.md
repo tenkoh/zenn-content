@@ -1,5 +1,5 @@
 ---
-title: "Pydantic TypeAdapterでサクサク型付けデシリアライズ"
+title: "Pydantic TypeAdapter でサクサク型付けデシリアライズ"
 emoji: "🔌"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["python", "pydantic", "型"]
@@ -7,7 +7,7 @@ published: false
 ---
 
 ## はじめに
-最近、仕事の中でPythonを触る機会が増え続けています。そんな中、以下のようなJSONをデシリアライズするシーンに出会いました。
+最近、仕事の中で Python を触る機会が増え続けています。そんな中、以下のような JSON をデシリアライズするシーンに出会いました。
 
 ```json
 {
@@ -23,9 +23,9 @@ published: false
 }
 ```
 
-このように、「**識別に使えそうな共通のキーはあるが、それ以外のキーが全く異なるようなJSON**」を読み込んでデシリアライズし、後続で異なる処理を行っていくというものです。
+このように、「**識別に使えそうな共通のキーはあるが、それ以外のキーが全く異なるような JSON**」を読み込んでデシリアライズし、後続で異なる処理を行っていくというものです。
 
-愚直に辞書として読み込んだ後に`model_name`を参照して条件分岐を書くこともできますが、せっかくであれば型やクラスを活用していきたいですね？（押し付け）
+辞書として読み込んだ後に愚直に `model_name` を参照して条件分岐を書くこともできますが、せっかくであれば型やクラスを活用していきたいですね？（押し付け）
 
 そこで本記事では以下のようなゴールを設定します。
 ```python
@@ -39,18 +39,18 @@ machine = 何かの処理({"model_name": "powerful", "turbo": "true"})
 さあ、これを実現する「何かの処理」はいったい何があるのでしょうか？
 
 ## 前提条件
-- Python3.10以上（コード例で `CompactMachine | PowerfulMachine` のような PEP 604 形式を使うため）
-- Pydantic v2以上
+- Python 3.10 以上（コード例で `CompactMachine | PowerfulMachine` のような PEP 604 形式を使うため）
+- Pydantic v2 以上
 
 ## 本記事の対象読者
-- PythonでJSONをデシリアライズした結果を適切なクラスに動的にキャストしたい人
-- Pydanticが好きな人
+- Python で JSON をデシリアライズした結果を適切なクラスに動的にキャストしたい人
+- Pydantic が好きな人
 
-## Pydanticのdiscriminator
-筆者の以前の記事では、次のような **データの一部が異なるJSON** をPydanticを使って型安全に扱うことをトライしました。
+## Pydantic の discriminator
+筆者の以前の記事では、次のような **データの一部が異なる JSON** を Pydantic を使って型安全に扱うことをトライしました。
 
 ```jsonp
-// drink_typeによって、drinkが持つフィールドが異なる。
+// drink_type によって、drink が持つフィールドが異なる。
 {
     "drink": {
         "drink_type": "coffee",
@@ -70,7 +70,7 @@ machine = 何かの処理({"model_name": "powerful", "turbo": "true"})
 }
 ```
 
-このケースではPydanticのFieldで **discriminator** を活用することができました。
+このケースでは Pydantic の Field で **discriminator** を活用することができました。
 
 ```python
 class Coffee(BaseModel):
@@ -109,14 +109,14 @@ https://zenn.dev/foxtail88/articles/flexible_robust_python
 
 しかし今回のケースは **クラスのプロパティの一部を異なるクラスとしてデシリアライズしたいのではなく、丸ごと異なるクラスとして扱いたい** ため異なるケースです。`ServeRequest` のように「1つのモデルの中に条件分岐を抱え込む」構成ではなく、入力値そのものを `CompactMachine` や `PowerfulMachine` といった別クラスのインスタンスに変換したかったので、他のアプローチを探す必要があると分かりました。
 
-## PydanticのTypeAdapter
-理想の手段を求め、筆者はPydanticの森を彷徨いました。。。
+## Pydantic の TypeAdapter
+理想の手段を求め、筆者は Pydantic の森を彷徨いました。。。
 
-そしてついに見つけたのです、**TypeAdapter**を…！
+そしてついに見つけたのです、**TypeAdapter** を…！
 
 https://docs.pydantic.dev/latest/api/type_adapter/#pydantic.type_adapter.TypeAdapter.json_schemas
 
-TypeAdapterを使うことで、下記のような処理が実現できます。
+TypeAdapter を使うことで、下記のような処理が実現できます。
 
 ```python
 from typing import Annotated, Literal, Union
@@ -148,10 +148,8 @@ powerful_json = {
 compact = MachineAdapter.validate_python(compact_json)
 powerful = MachineAdapter.validate_python(powerful_json)
 
-print(compact)
-print(type(compact))
-print(powerful)
-print(type(powerful))
+print(type(compact))  # CompactMachine
+print(type(powerful)) # PowerfulMachine
 ```
 **簡潔だ…!!**
 
@@ -161,15 +159,15 @@ playground: https://pydantic.run/store/ba10a1ade69d2c98
 
 
 
-### discriminatorを明示すると安心
+### discriminator を明示すると安心
 ちなみに、先ほどのように何を識別に使うか明示しなくても上手くいく例もありますが、明示しておくにこしたことはありません。
-Pydantic公式ドキュメントにも
+Pydantic 公式ドキュメントにも
 
 > "In general, we recommend using discriminated unions. They are both more performant and more predictable than untagged unions, as they allow you to control which member of the union to validate against." — https://docs.pydantic.dev/latest/concepts/unions/
 
 と書かれており、discriminator を挟まない場合は Union の各モデルが「順番に試される」挙動になるため、`CompactMachine` と `PowerfulMachine` で似たフィールド構成を持っていると誤って先に並べた方のモデルが選ばれてしまう恐れがあります。将来的に JSON のキーが増えたときの変換事故を防ぐ意味でも、`Field(discriminator=...)` を使って判別キーを固定しておくのが安全です。
 
-その場合は`typing.Annotated`と`pydantic.Field`を併用して以下のように書けます。
+その場合は `typing.Annotated` と `pydantic.Field` を併用して以下のように書けます。
 
 ```python
 # model_name で判別する Union 型
@@ -181,8 +179,8 @@ Machine = Annotated[
 MachineAdapter = TypeAdapter(Machine)
 ```
 
-つまり、冒頭の`何かの処理`は`TypeAdapter.validate_python`だったんですね！ありがとうPydantic…！
+つまり、冒頭の `何かの処理` は `TypeAdapter.validate_python` だったんですね！ありがとう Pydantic…！
 
 ## おわりに
-Pydanticを使うことで、デシリアライズした結果を異なるクラスとして扱うことが非常にシンプルに実現できました。
-今後もこうしたテクニックを身につけて、型安全で楽しいPythonライフを送りたいと思います。
+Pydantic を使うことで、デシリアライズした結果を異なるクラスとして扱うことが非常にシンプルに実現できました。
+今後もこうしたテクニックを身につけて、型安全で楽しい Python ライフを送りたいと思います。
