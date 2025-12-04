@@ -1,5 +1,5 @@
 ---
-title: "Pydantic TypeAdapter でサクサク型付けデシリアライズ"
+title: "Pydantic TypeAdapter でサクサク型付けデシリアライズ - JSON を複数クラスへ自動振り分け"
 emoji: "🔌"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["python", "pydantic", "型"]
