@@ -3,7 +3,7 @@ title: "Pydantic TypeAdapter でサクサク型付けデシリアライズ"
 emoji: "🔌"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["python", "pydantic", "型"]
-published: false
+published: true
 ---
 
 ## はじめに
