@@ -30,16 +30,16 @@ published: false
 そこで本記事では以下のようなゴールを設定します。
 ```python
 # これは CompactMachine クラスになる
-machine = 何かの処理({"model_type": "compact", "weight": 1.5})
+machine = 何かの処理({"model_name": "compact", "weight": 1.5})
 
 # これは PowerfulMachine クラスになる
-machine = 何かの処理({"model_type": "poerful", "turbo": "true"})
+machine = 何かの処理({"model_name": "powerful", "turbo": "true"})
 ```
 
 さあ、これを実現する「何かの処理」はいったい何があるのでしょうか？
 
 ## 前提条件
-- Python3.10以上
+- Python3.10以上（コード例で `CompactMachine | PowerfulMachine` のような PEP 604 形式を使うため）
 - Pydantic v2以上
 
 ## 本記事の対象読者
@@ -87,21 +87,27 @@ class ServeRequest(BaseModel):
 
 # ServeRequest.drink は Coffee クラス
 req = ServeRequest.model_validate({
-    "drink_type": "coffee",
-    "serve_mode": # 省略
+    "drink": {
+        "drink_type": "coffee",
+        "serve_mode": # 省略
+    },
+    "cup_type": "paper_cup",
 })
 
 # ServeRequest.drink は GreenTea クラス
 req = ServeRequest.model_validate({
-    "drink_type": "green_tea",
-    "region": # 省略
+    "drink": {
+        "drink_type": "green_tea",
+        "region": # 省略
+    },
+    "cup_type": "my_cup",
 })
 ```
 
 こちらの詳細を知りたい場合は、ぜひ下記の記事もご覧ください。
 https://zenn.dev/foxtail88/articles/flexible_robust_python
 
-しかし今回のケースは **クラスのプロパティの一部を異なるクラスとしてデシリアライズしたいのではなく、丸ごと異なるクラスとして扱いたい** ため異なるケースです。他の手段を探す必要があると分かりました。
+しかし今回のケースは **クラスのプロパティの一部を異なるクラスとしてデシリアライズしたいのではなく、丸ごと異なるクラスとして扱いたい** ため異なるケースです。`ServeRequest` のように「1つのモデルの中に条件分岐を抱え込む」構成ではなく、入力値そのものを `CompactMachine` や `PowerfulMachine` といった別クラスのインスタンスに変換したかったので、他のアプローチを探す必要があると分かりました。
 
 ## PydanticのTypeAdapter
 理想の手段を求め、筆者はPydanticの森を彷徨いました。。。
@@ -149,11 +155,20 @@ print(type(powerful))
 ```
 **簡潔だ…!!**
 
+`TypeAdapter` は `BaseModel.model_validate` のように単一モデルをバリデーションするのではなく、Union など任意の型ヒントを事前にコンパイルしておき、その定義に沿って値を振り分けてくれるユーティリティです。`validate_python` は辞書を渡したときに最適なモデル (`CompactMachine` / `PowerfulMachine`) を返してくれるので、以降の処理では Python のクラスとしてメソッドや補完をそのまま使えます。TypeAdapter を使わない場合は自分で `model_name` を参照して `CompactMachine.model_validate` を呼び分ける必要があるため、型安全さも記述量も TypeAdapter に軍配が上がります。
+
 playground: https://pydantic.run/store/ba10a1ade69d2c98
 
 
 
+### discriminatorを明示すると安心
 ちなみに、先ほどのように何を識別に使うか明示しなくても上手くいく例もありますが、明示しておくにこしたことはありません。
+Pydantic公式ドキュメントにも
+
+> "In general, we recommend using discriminated unions. They are both more performant and more predictable than untagged unions, as they allow you to control which member of the union to validate against." — https://docs.pydantic.dev/latest/concepts/unions/
+
+と書かれており、discriminator を挟まない場合は Union の各モデルが「順番に試される」挙動になるため、`CompactMachine` と `PowerfulMachine` で似たフィールド構成を持っていると誤って先に並べた方のモデルが選ばれてしまう恐れがあります。将来的に JSON のキーが増えたときの変換事故を防ぐ意味でも、`Field(discriminator=...)` を使って判別キーを固定しておくのが安全です。
+
 その場合は`typing.Annotated`と`pydantic.Field`を併用して以下のように書けます。
 
 ```python
