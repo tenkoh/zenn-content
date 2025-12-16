@@ -240,8 +240,8 @@ func eventsHandler(tokenBytes int, writeTimeout time.Duration) http.HandlerFunc 
 		w.Header().Set("Connection", "keep-alive")
 
 		flusher, _ := w.(http.Flusher)
-
-        // 変更！
+		
+		// 追加！
 		rc := http.NewResponseController(w)
 		ctx := r.Context()
 		tokens := startTokenStream(ctx, tokenBytes)
@@ -256,7 +256,7 @@ func eventsHandler(tokenBytes int, writeTimeout time.Duration) http.HandlerFunc 
 				if !ok {
 					return
 				}
-                // 追加！
+				// 追加！
 				if err := rc.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
 					log.Printf("set deadline failed: %v", err)
 					return
@@ -279,6 +279,9 @@ func eventsHandler(tokenBytes int, writeTimeout time.Duration) http.HandlerFunc 
 go run ./sse-improved-server -token-bytes=50000 -write-timeout=1s
 ```
 
+メモリー使用率は以下のグラフのようになりました。
+![top_memory_graph_improved](/images/go-secure-sse-server/top_memory_graph_improved.png)
+
 先ほどと同様にカーネルのTCP送信バッファがいっぱいになり、メモリー使用量が増えていきますが、カーネルのTCP送信バッファへの書き込みがブロックされた時点から1秒(WriteTimeout)が経過した時点でコネクションが切断されました。(GCで回収されていないのでメモリー使用率は減っていません)
 狙い通りに、書き込みがブロックされた時点を起点として書き込みのタイムアウトが動作していることが確認できました。
 
@@ -289,6 +292,13 @@ go run ./sse-improved-server -token-bytes=50000 -write-timeout=1s
 
 本記事では、`http.ResponseController`の`SetWriteDeadline`のような仕組みを使い、イベント送信ごとのタイムアウトを設けることで一定の対策が可能な目処も立ちました。今後の実装に活用していきたいと思います。
 
-## 付録
+## 付録1
+本記事を記載するにあたり文献を調査しましたが、こうした現象は`back pressure`と呼ばれるのですね。
+
+例えばNode.jsにおいてはどのようにバックプレッシャー対策をしているか解説されていました。
+
+https://nodejs.org/en/learn/modules/backpressuring-in-streams
+
+## 付録2
 実験に使ったコードは以下のGitHubリポジトリに公開しました。
-(リンクは後で追記)
+https://github.com/tenkoh/example-go-backpressure
