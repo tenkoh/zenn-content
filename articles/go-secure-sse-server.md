@@ -3,7 +3,7 @@ title: "【Go】SSEケーススタディ・だれかそのイベント止めて�
 emoji: "🚰"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["go", "sse", "http"]
-published: false
+published: true
 ---
 
 この記事は[Goアドベントカレンダー2025](https://qiita.com/advent-calendar/2025/go)に参加しています。
