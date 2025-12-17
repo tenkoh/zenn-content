@@ -78,57 +78,57 @@ SSEの特徴として、サーバーとクライアントの間には比較的�
 
 ```go
 func startTokenStream(ctx context.Context, tokenBytes int) <-chan string {
-	tokens := make(chan string, 100)
-	go func() {
-		defer close(tokens)
-		ticker := time.NewTicker(50 * time.Millisecond)
-		defer ticker.Stop()
+    tokens := make(chan string, 100)
+    go func() {
+        defer close(tokens)
+        ticker := time.NewTicker(50 * time.Millisecond)
+        defer ticker.Stop()
 
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				token := buildResponseToken(tokenBytes)
-				select {
-				case tokens <- token:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}
-	}()
-	return tokens
+        for {
+            select {
+            case <-ctx.Done():
+                return
+            case <-ticker.C:
+                token := buildResponseToken(tokenBytes)
+                select {
+                case tokens <- token:
+                case <-ctx.Done():
+                    return
+                }
+            }
+        }
+    }()
+    return tokens
 }
 
 func eventsHandler(tokenBytes int) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
+    return func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "text/event-stream")
+        w.Header().Set("Cache-Control", "no-cache")
+        w.Header().Set("Connection", "keep-alive")
 
-		flusher, _ := w.(http.Flusher)
+        flusher, _ := w.(http.Flusher)
 
-		ctx := r.Context()
-		tokens := startTokenStream(ctx, tokenBytes)
-		log.Printf("client connected (payload=%d bytes)", tokenBytes)
-		defer log.Println("client disconnected")
+        ctx := r.Context()
+        tokens := startTokenStream(ctx, tokenBytes)
+        log.Printf("client connected (payload=%d bytes)", tokenBytes)
+        defer log.Println("client disconnected")
 
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case token, ok := <-tokens:
-				if !ok {
-					return
-				}
-				if _, err := fmt.Fprintf(w, "data: %s\n\n", token); err != nil {
-					return
-				}
-				flusher.Flush()
-			}
-		}
-	}
+        for {
+            select {
+            case <-ctx.Done():
+                return
+            case token, ok := <-tokens:
+                if !ok {
+                    return
+                }
+                if _, err := fmt.Fprintf(w, "data: %s\n\n", token); err != nil {
+                    return
+                }
+                flusher.Flush()
+            }
+        }
+    }
 }
 ```
 
@@ -234,41 +234,41 @@ Go1.20から、`http.ResponseController`が追加されました。これを用�
 
 ```go
 func eventsHandler(tokenBytes int, writeTimeout time.Duration) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
+    return func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "text/event-stream")
+        w.Header().Set("Cache-Control", "no-cache")
+        w.Header().Set("Connection", "keep-alive")
 
-		flusher, _ := w.(http.Flusher)
-		
-		// 追加！
-		rc := http.NewResponseController(w)
-		ctx := r.Context()
-		tokens := startTokenStream(ctx, tokenBytes)
-		log.Printf("client connected (payload=%d bytes)", tokenBytes)
-		defer log.Println("client disconnected")
+        flusher, _ := w.(http.Flusher)
+        
+        // 追加！
+        rc := http.NewResponseController(w)
+        ctx := r.Context()
+        tokens := startTokenStream(ctx, tokenBytes)
+        log.Printf("client connected (payload=%d bytes)", tokenBytes)
+        defer log.Println("client disconnected")
 
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case token, ok := <-tokens:
-				if !ok {
-					return
-				}
-				// 追加！
-				if err := rc.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
-					log.Printf("set deadline failed: %v", err)
-					return
-				}
-				if _, err := fmt.Fprintf(w, "data: %s\n\n", token); err != nil {
-					log.Printf("write failed: %v", err)
-					return
-				}
-				flusher.Flush()
-			}
-		}
-	}
+        for {
+            select {
+            case <-ctx.Done():
+                return
+            case token, ok := <-tokens:
+                if !ok {
+                    return
+                }
+                // 追加！
+                if err := rc.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
+                    log.Printf("set deadline failed: %v", err)
+                    return
+                }
+                if _, err := fmt.Fprintf(w, "data: %s\n\n", token); err != nil {
+                    log.Printf("write failed: %v", err)
+                    return
+                }
+                flusher.Flush()
+            }
+        }
+    }
 }
 ```
 
