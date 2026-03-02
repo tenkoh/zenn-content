@@ -119,7 +119,7 @@ Cloudflare Tunnelには**Cloudflare Access**という認証機能を組み合わ
 
 **残念ながら、Cloudflare AccessにはBasic認証の機能がありません。**
 
-そこで目を付けたのが**Cloudflare Workers**です。Workersはエッジで動くサーバーレス関数で、Tunnelの公開ホスト名の前段にプロキシとして配置できます。WorkersでBasic認証を実装し、認証を通過したリクエストだけをTunnelの公開ホスト名に転送する構成です。こちらも無料枠で十分です。
+そこで**Cloudflare Workers**のお世話になることにします。かなり市民権を得ているWorkersなので説明は割愛しますが、エッジで動くサーバーレス関数として、Tunnelの公開ホスト名の前段にプロキシとして配置できます。WorkersでBasic認証を実装し、認証を通過したリクエストだけをTunnelの公開ホスト名に転送する構成です。こちらも無料枠で十分です。
 
 ```mermaid
 sequenceDiagram
@@ -174,7 +174,7 @@ sequenceDiagram
 
 ### Cloudflare Tunnelの作成
 
-[Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/) → Networks → Tunnels → Create a tunnel から作成します。
+Cloudflare Zero Trust Dashboard → ネットワーク → コネクタ → トンネルを作成する から作成します。
 
 | 項目 | 値 |
 |---|---|
@@ -202,7 +202,7 @@ sequenceDiagram
 
 まずService Tokenを作成しておきます。後のAccess Applicationのポリシー設定で使います。
 
-Zero Trust Dashboard → Access controls → Service credentials → Service Tokens → Create Service Token から作成します。
+Zero Trust Dashboard → Accessコントロール → サービス資格情報 → サービストークンを作成する から作成します。
 
 | 項目 | 値 |
 |---|---|
@@ -220,7 +220,7 @@ Zero Trust Dashboard → Access controls → Service credentials → Service Tok
 
 #### Access Applicationの作成
 
-Zero Trust Dashboard → Access controls → Applications → Add an application → Self-hosted を選択します。
+Zero Trust Dashboard → Accessコントロール → アプリケーション → アプリケーションを追加する → セルフホスト を選択します。
 
 | 項目 | 値 |
 |---|---|
@@ -233,13 +233,22 @@ Zero Trust Dashboard → Access controls → Applications → Add an application
 |---|---|
 | Policy name | 任意 |
 | Action | Service Auth |
-| Include | 先ほど作成したService Token |
+| Session time | アプリケーションセッションタイムアウトと同じ |
 
 ポイントはService Authを選ぶことです。これにより、IdP（Google等）によるログインフローではなく、Service Tokenによる機械的な認証のみを受け付けます。
 
+次に、同じ画面でルールを設定します。
+
+| 項目 | 値 |
+|---|---|
+| Selector | Service Token |
+| Value | 先程作成したサービストークンをドロップダウンメニューから選択 |
+
+これで Tunnel が非公開になりました。
+
 ### Cloudflare WorkersでBasic認証プロキシを実装
 
-認証プロキシの実装には[Hono](https://hono.dev/)を使いました。TypeScript対応でCloudflare Workersとの相性が良いフレームワークです。
+認証プロキシの実装には[Hono](https://hono.dev/)を使いました。
 
 やることはシンプルで、すべてのリクエストにBasic認証を適用し、認証を通過したリクエストをService Token付きでTunnelホストにプロキシします。
 
