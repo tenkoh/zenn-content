@@ -17,6 +17,8 @@ Jev が注目を集めている背景には、大規模言語モデル（LLM）�
 
 ![jev-generative-ui-sample](/images/jev-generative-ui/generative_ui_jev_sample.gif)
 
+デモ環境：https://generative-dashboard.jevpoc.tenkoh.dev/
+
 ## 対象読者
 
 - Jev の仕様や特徴に興味があり、具体的な活用方法を調べている開発者
